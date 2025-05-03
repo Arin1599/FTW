@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LocalShare - Network File Sharing</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
+</head>
+<body>
+    <header class="text-center">
+        <h1 class="text-3xl font-bold text-gray-800">
+            <i class="fas fa-network-wired text-blue-600 mr-3"></i>LocalShare
+        </h1>
+        <p class="text-gray-500 mt-1">Share files and clipboard across your local network</p>
+    </header>
+
+    <div id="flash-messages" class="mb-4"></div>
+
+    <div class="main-container">
+        <!-- Upload Files Card -->
+        <div class="feature-card">
+            <div class="feature-card-header">
+                <h2>
+                    <i class="fas fa-upload text-blue-500"></i>Upload Files
+                </h2>
+            </div>
+            <div class="feature-card-content">
+                <div class="feature-card-scroll">
+                    <form action="{{ url_for('upload_file') }}" method="post" enctype="multipart/form-data" id="upload-form">
+                        <div id="drop-zone">
+                            <label for="fileInput">
+                                <i class="fas fa-cloud-arrow-up text-4xl text-gray-400"></i>
+                                <span class="font-medium text-gray-600">Drag & drop files here</span>
+                                <span class="text-gray-500 text-sm">or click to browse</span>
+                                <span id="file-name-display" class="text-sm text-indigo-600">No files selected</span>
+                            </label>
+                            <input type="file" name="files[]" id="fileInput" multiple>
+                        </div>
+                    </form>
+                </div>
+                <div class="feature-card-footer">
+                    <button type="submit" form="upload-form" class="btn btn-primary w-full" disabled id="upload-button">
+                        <i class="fas fa-paper-plane"></i>Upload Selected Files
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Share Clipboard Card -->
+        <div class="feature-card">
+            <div class="feature-card-header">
+                <h2>
+                    <i class="fas fa-paste text-green-500"></i>Share Clipboard
+                </h2>
+            </div>
+            <div class="feature-card-content">
+                <div class="feature-card-scroll">
+                    <form action="{{ url_for('upload_clipboard') }}" method="post" id="clipboard-form" class="hidden">
+                        <input type="hidden" name="type" id="clipboard-type">
+                        <input type="hidden" name="data" id="clipboard-data">
+                    </form>
+                    <div id="paste-area" contenteditable="true" aria-placeholder="Click and paste here..." tabindex="0">
+                        <i class="fas fa-clipboard text-4xl text-gray-400"></i>
+                        <span class="font-medium">Click and paste here</span>
+                    </div>
+                </div>
+                <div class="feature-card-footer">
+                    <button type="button" id="send-clipboard-button" class="btn btn-secondary flex-grow" disabled>
+                        <i class="fas fa-share"></i>Send Pasted Content
+                    </button>
+                    <button type="button" id="clear-clipboard-button" class="btn btn-neutral">
+                        <i class="fas fa-times"></i>Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Server Clipboard Card -->
+        <div class="feature-card">
+            <div class="feature-card-header">
+                <h2>
+                    <i class="fas fa-server text-blue-500"></i>Server Clipboard
+                </h2>
+            </div>
+            <div class="feature-card-content">
+                <div class="feature-card-scroll">
+                    <div id="server-clipboard-area">
+                        <div class="flex flex-col items-center justify-center text-gray-500 h-full">
+                            <i class="fas fa-clipboard text-4xl"></i>
+                            <span>Server clipboard content will appear here</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="feature-card-footer">
+                    <button type="button" id="fetch-server-clipboard" class="btn btn-primary flex-grow">
+                        <i class="fas fa-sync"></i>Fetch Server Clipboard
+                    </button>
+                    <button type="button" id="copy-server-clipboard" class="btn btn-secondary" disabled>
+                        <i class="fas fa-copy"></i>Copy
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Download Files Card -->
+        <div class="feature-card">
+            <div class="feature-card-header">
+                <h2>
+                    <i class="fas fa-download text-purple-500"></i>Download Files
+                </h2>
+            </div>
+            <div class="feature-card-content">
+                <div class="feature-card-scroll">
+                    <p class="text-sm text-gray-500 mb-2">
+                        Files in <code class="bg-gray-200 px-1.5 py-0.5 rounded text-sm text-gray-700">{{ data_folder_name | default('data') }}</code>:
+                    </p>
+                    <div class="download-list">
+                        {% if files %}
+                            <ul class="space-y-1">
+                                {% for file in files %}
+                                    <li class="file-list-item">
+                                        <a href="{{ url_for('download_file', filename=file) }}" download>
+                                            <i class="fas fa-file-alt"></i>
+                                            <span class="truncate">{{ file }}</span>
+                                        </a>
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="text-center text-gray-500 italic py-4">
+                                <i class="fas fa-folder-open text-3xl mb-2"></i>
+                                <p>No files found in the '{{ data_folder_name | default('data') }}' folder.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer class="text-center mt-4 text-gray-500 text-sm">
+        LocalShare Application
+    </footer>
+
+    <script>
+        // DOM Elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('fileInput');
+        const fileNameDisplay = document.getElementById('file-name-display');
+        const uploadButton = document.getElementById('upload-button');
+        const uploadForm = document.getElementById('upload-form');
+
+        const pasteArea = document.getElementById('paste-area');
+        const clipboardForm = document.getElementById('clipboard-form');
+        const clipboardTypeInput = document.getElementById('clipboard-type');
+        const clipboardDataInput = document.getElementById('clipboard-data');
+        const sendClipboardButton = document.getElementById('send-clipboard-button');
+        const clearClipboardButton = document.getElementById('clear-clipboard-button');
+        const flashMessagesContainer = document.getElementById('flash-messages');
+
+        // --- File Upload Logic ---
+
+        function setupFileUpload() {
+            if (!dropZone || !fileInput || !fileNameDisplay || !uploadButton) {
+                console.error("File upload elements not found.");
+                return;
+            }
+
+            // Prevent default drag behaviors
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+                document.body.addEventListener(eventName, preventDefaults, false); // Prevent browser opening file
+            });
+
+            // Highlight drop zone when item is dragged over it
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+            });
+
+            // Remove highlight when item leaves drop zone
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+            });
+
+            // Handle dropped files
+            dropZone.addEventListener('drop', handleDrop, false);
+
+            // Handle files selected via click (delegated from label)
+            fileInput.addEventListener('change', handleFileSelect, false);
+
+            // Update display initially
+            updateFileNameDisplay();
+        }
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length) {
+                fileInput.files = files; // Assign dropped files to hidden input
+                updateFileNameDisplay();
+            }
+        }
+
+        function handleFileSelect() {
+             updateFileNameDisplay();
+        }
+
+        function updateFileNameDisplay() {
+            if (!fileInput || !fileNameDisplay || !uploadButton) return;
+
+            if (fileInput.files && fileInput.files.length > 0) {
+                let fileText;
+                if (fileInput.files.length === 1) {
+                    fileText = fileInput.files[0].name;
+                } else {
+                    fileText = `${fileInput.files.length} files selected`;
+                }
+                // Truncate long text
+                fileNameDisplay.textContent = fileText.length > 40 ? fileText.substring(0, 37) + '...' : fileText;
+                uploadButton.disabled = false; // Enable upload button
+            } else {
+                fileNameDisplay.textContent = 'No files selected';
+                uploadButton.disabled = true; // Disable upload button
+            }
+        }
+
+
+        // --- Clipboard Logic ---
+
+        function setupClipboard() {
+            if (!pasteArea || !clipboardForm || !sendClipboardButton || !clearClipboardButton) {
+                 console.error("Clipboard elements not found.");
+                 return;
+            }
+
+            pasteArea.addEventListener('paste', handlePaste, false);
+
+            // Allow basic text editing, treat as text paste
+            pasteArea.addEventListener('input', handleTextInput, false);
+
+            sendClipboardButton.addEventListener('click', submitClipboard, false);
+            clearClipboardButton.addEventListener('click', clearPasteArea, false);
+
+            // Initial state
+            clearPasteArea(); // Ensure it starts clean and button disabled
+        }
+
+        async function handlePaste(event) {
+            event.preventDefault();
+            clearPasteAreaContent(); // Clear previous visual content only
+
+            try {
+                const clipboardItems = await navigator.clipboard.read();
+                let foundContent = false;
+
+                for (const item of clipboardItems) {
+                    // Prioritize images
+                    const imageType = item.types.find(type => type.startsWith('image/'));
+                    if (imageType) {
+                        const blob = await item.getType(imageType);
+                        const reader = new FileReader();
+                        reader.onload = function(e) {
+                            const base64Image = e.target.result;
+                            clipboardDataInput.value = base64Image;
+                            clipboardTypeInput.value = 'image';
+                            displayImagePreview(base64Image);
+                            foundContent = true;
+                            enableClipboardSend();
+                        }
+                        reader.readAsDataURL(blob);
+                        return; // Process first image found
+                    }
+                }
+
+                 // If no image, check for text
+                 for (const item of clipboardItems) {
+                    if (item.types.includes('text/plain')) {
+                        const textBlob = await item.getType('text/plain');
+                        const text = await textBlob.text();
+                        if (text.trim()) {
+                            clipboardDataInput.value = text;
+                            clipboardTypeInput.value = 'text';
+                            displayTextPreview(text);
+                            foundContent = true;
+                            enableClipboardSend();
+                        }
+                        return; // Process first text found
+                    }
+                 }
+
+
+                if (!foundContent) {
+                    displayPasteMessage('Could not process pasted content (unsupported format?)');
+                    disableClipboardSend();
+                }
+
+            } catch (err) {
+                console.error('Failed to read clipboard contents: ', err);
+                // Fallback for browsers that might not support navigator.clipboard.read() well
+                // or if permissions are denied. Try using the event.clipboardData (less reliable for images sometimes)
+                handlePasteFallback(event);
+            }
+        }
+
+        function handlePasteFallback(event) {
+             const items = event.clipboardData.items;
+             let foundContent = false;
+             clearPasteAreaContent();
+
+             for (const index in items) {
+                 const item = items[index];
+                 if (item.kind === 'file' && item.type.startsWith('image/')) {
+                     const blob = item.getAsFile();
+                     const reader = new FileReader();
+                     reader.onload = function(e) {
+                         const base64Image = e.target.result;
+                         clipboardDataInput.value = base64Image;
+                         clipboardTypeInput.value = 'image';
+                         displayImagePreview(base64Image);
+                         foundContent = true;
+                         enableClipboardSend();
+                     }
+                     reader.readAsDataURL(blob);
+                     return; // Process first image
+                 }
+             }
+
+             for (const index in items) {
+                  const item = items[index];
+                  if (item.kind === 'string' && item.type === 'text/plain') {
+                      item.getAsString((text) => {
+                         if (text.trim()) {
+                             clipboardDataInput.value = text;
+                             clipboardTypeInput.value = 'text';
+                             displayTextPreview(text);
+                             foundContent = true;
+                             enableClipboardSend();
+                         }
+                     });
+                     return; // Process first text
+                 }
+             }
+
+             if (!foundContent) {
+                displayPasteMessage('Could not process pasted content (unsupported format?)');
+                disableClipboardSend();
+            }
+        }
+
+
+        function handleTextInput() {
+            // If user types directly, treat it as text input
+            // unless an image was just pasted.
+            if (clipboardTypeInput.value !== 'image') {
+                const textContent = pasteArea.innerText.trim();
+                 if (textContent) {
+                    clipboardDataInput.value = textContent;
+                    clipboardTypeInput.value = 'text';
+                    // No visual update needed as user is typing
+                    enableClipboardSend();
+                 } else {
+                    // If text is deleted, disable send unless hidden data exists
+                    if (!clipboardDataInput.value) {
+                       disableClipboardSend();
+                       pasteArea.classList.remove('has-content');
+                    }
+                 }
+            }
+        }
+
+        function displayImagePreview(base64Image) {
+            pasteArea.innerHTML = ''; // Clear placeholder/text
+            const img = document.createElement('img');
+            img.src = base64Image;
+            img.alt = "Pasted image preview";
+            pasteArea.appendChild(img);
+            pasteArea.classList.add('has-content');
+        }
+
+        function displayTextPreview(text) {
+             pasteArea.innerHTML = ''; // Clear placeholder/image
+             const pre = document.createElement('pre');
+             pre.textContent = text; // Use textContent to prevent HTML injection
+             pasteArea.appendChild(pre);
+             pasteArea.classList.add('has-content');
+        }
+
+        function displayPasteMessage(message) {
+            pasteArea.innerHTML = ''; // Clear placeholder/content
+            const span = document.createElement('span');
+            span.textContent = message;
+            span.className = 'text-red-500 text-sm';
+            pasteArea.appendChild(span);
+            pasteArea.classList.remove('has-content');
+        }
+
+        function submitClipboard() {
+            if (clipboardDataInput.value && clipboardTypeInput.value) {
+                clipboardForm.submit();
+            } else {
+                // Show temporary feedback if needed, though button should be disabled
+                flashMessage('No content in paste area to send.', 'warning');
+            }
+        }
+
+        function clearPasteAreaContent() {
+            // Only clears the visual display, not the hidden inputs yet
+            pasteArea.innerHTML = `
+                <i class="fas fa-clipboard text-4xl text-gray-400"></i>
+                <span class="font-medium">Click and paste here</span>`;
+            pasteArea.classList.remove('has-content');
+        }
+
+        function clearPasteArea() {
+            // Clears visuals and hidden input values
+            clearPasteAreaContent();
+            clipboardDataInput.value = '';
+            clipboardTypeInput.value = '';
+            disableClipboardSend();
+            pasteArea.blur(); // Remove focus
+        }
+
+        function enableClipboardSend() {
+             if(sendClipboardButton) sendClipboardButton.disabled = false;
+        }
+
+        function disableClipboardSend() {
+             if(sendClipboardButton) sendClipboardButton.disabled = true;
+        }
+
+        // --- Flash Messages ---
+        function flashMessage(message, category = 'info') {
+            if (!flashMessagesContainer) return;
+
+            const div = document.createElement('div');
+            div.className = `flash-message flash-${category}`;
+            div.setAttribute('role', 'alert');
+
+            const span = document.createElement('span');
+            span.textContent = message;
+
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.innerHTML = '&times;';
+            button.className = 'ml-4 text-lg font-semibold';
+            button.onclick = () => div.remove(); // Use remove() for modern browsers
+
+            div.appendChild(span);
+            div.appendChild(button);
+
+            flashMessagesContainer.appendChild(div);
+
+            // Optional: Auto-dismiss after a few seconds
+            // setTimeout(() => {
+            //     div.style.opacity = '0';
+            //     setTimeout(() => div.remove(), 500); // Remove after fade out
+            // }, 5000); // 5 seconds
+        }
+
+        // --- Server Clipboard Logic ---
+        function setupServerClipboard() {
+            const fetchServerClipboardBtn = document.getElementById('fetch-server-clipboard');
+            const copyServerClipboardBtn = document.getElementById('copy-server-clipboard');
+            const serverClipboardArea = document.getElementById('server-clipboard-area');
+            
+            if (!fetchServerClipboardBtn || !copyServerClipboardBtn || !serverClipboardArea) return;
+
+            let currentServerContent = null;
+
+            fetchServerClipboardBtn.addEventListener('click', async () => {
+                try {
+                    fetchServerClipboardBtn.disabled = true;
+                    const response = await fetch('/get_server_clipboard');
+                    const data = await response.json();
+                    
+                    if (data.success && data.data) {
+                        currentServerContent = data;
+                        
+                        // Update server clipboard display
+                        serverClipboardArea.innerHTML = '';
+                        if (data.type === 'text') {
+                            const pre = document.createElement('pre');
+                            pre.textContent = data.data;
+                            pre.className = 'whitespace-pre-wrap text-left w-full max-h-[150px] overflow-y-auto text-sm text-gray-700 bg-white p-2 rounded-md';
+                            serverClipboardArea.appendChild(pre);
+                        } else if (data.type === 'image') {
+                            const img = document.createElement('img');
+                            img.src = data.data;
+                            img.alt = "Server clipboard image";
+                            img.className = 'max-w-full max-h-[150px] object-contain mx-auto';
+                            serverClipboardArea.appendChild(img);
+                        }
+                        
+                        copyServerClipboardBtn.disabled = false;
+                        flashMessage('Server clipboard content fetched successfully', 'success');
+                    } else {
+                        throw new Error(data.error || 'No content in server clipboard');
+                    }
+                } catch (error) {
+                    console.error('Error fetching server clipboard:', error);
+                    flashMessage(`Failed to fetch server clipboard: ${error.message}`, 'error');
+                    serverClipboardArea.innerHTML = `
+                        <div class="flex flex-col items-center justify-center text-red-500 h-full">
+                            <i class="fas fa-exclamation-circle text-4xl mb-2"></i>
+                            <span>Failed to fetch server clipboard</span>
+                        </div>`;
+                    copyServerClipboardBtn.disabled = true;
+                    currentServerContent = null;
+                } finally {
+                    fetchServerClipboardBtn.disabled = false;
+                }
+            });
+
+            copyServerClipboardBtn.addEventListener('click', async () => {
+                if (!currentServerContent) return;
+                
+                try {
+                    if (currentServerContent.type === 'text') {
+                        await navigator.clipboard.writeText(currentServerContent.data);
+                    } else if (currentServerContent.type === 'image') {
+                        // For images, we need to fetch the blob first
+                        const response = await fetch(currentServerContent.data);
+                        const blob = await response.blob();
+                        await navigator.clipboard.write([
+                            new ClipboardItem({
+                                [blob.type]: blob
+                            })
+                        ]);
+                    }
+                    flashMessage('Content copied to clipboard successfully', 'success');
+                } catch (error) {
+                    console.error('Error copying to clipboard:', error);
+                    flashMessage('Failed to copy to clipboard. Please try selecting and copying manually.', 'error');
+                }
+            });
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFileUpload();
+            setupClipboard();
+            setupServerClipboard();
+            // Add listeners to existing flash message close buttons
+            document.querySelectorAll('#flash-messages button').forEach(button => {
+                 button.addEventListener('click', () => {
+                    button.parentElement.style.display='none';
+                 });
+            });
+        });
+
+    </script>
+
+</body>
+</html>
