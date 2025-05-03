@@ -449,18 +449,28 @@
             button.type = 'button';
             button.innerHTML = '&times;';
             button.className = 'ml-4 text-lg font-semibold';
-            button.onclick = () => div.remove(); // Use remove() for modern browsers
+            button.onclick = () => removeFlashMessage(div);
 
             div.appendChild(span);
             div.appendChild(button);
 
             flashMessagesContainer.appendChild(div);
 
-            // Optional: Auto-dismiss after a few seconds
-            // setTimeout(() => {
-            //     div.style.opacity = '0';
-            //     setTimeout(() => div.remove(), 500); // Remove after fade out
-            // }, 5000); // 5 seconds
+            // Auto-dismiss after 5 seconds
+            setTimeout(() => {
+                removeFlashMessage(div);
+            }, 5000);
+        }
+
+        function removeFlashMessage(element) {
+            if (!element) return;
+            element.style.opacity = '0';
+            element.style.transform = 'translateY(-10px)';
+            setTimeout(() => {
+                if (element.parentNode) {
+                    element.parentNode.removeChild(element);
+                }
+            }, 300); // Wait for transition to complete before removing
         }
 
         // --- Server Clipboard Logic ---
@@ -522,21 +532,56 @@
                 
                 try {
                     if (currentServerContent.type === 'text') {
-                        await navigator.clipboard.writeText(currentServerContent.data);
+                        // Use a fallback method if the clipboard API fails
+                        try {
+                            await navigator.clipboard.writeText(currentServerContent.data);
+                        } catch (err) {
+                            // Fallback: Create temporary textarea
+                            const textarea = document.createElement('textarea');
+                            textarea.value = currentServerContent.data;
+                            textarea.style.position = 'fixed';
+                            textarea.style.opacity = '0';
+                            document.body.appendChild(textarea);
+                            textarea.select();
+                            document.execCommand('copy');
+                            document.body.removeChild(textarea);
+                        }
                     } else if (currentServerContent.type === 'image') {
                         // For images, we need to fetch the blob first
                         const response = await fetch(currentServerContent.data);
                         const blob = await response.blob();
-                        await navigator.clipboard.write([
-                            new ClipboardItem({
-                                [blob.type]: blob
-                            })
-                        ]);
+                        try {
+                            await navigator.clipboard.write([
+                                new ClipboardItem({
+                                    [blob.type]: blob
+                                })
+                            ]);
+                        } catch (err) {
+                            // For browsers that don't support ClipboardItem
+                            const img = document.createElement('img');
+                            img.src = currentServerContent.data;
+                            document.body.appendChild(img);
+                            try {
+                                const selection = window.getSelection();
+                                const range = document.createRange();
+                                range.selectNode(img);
+                                selection.removeAllRanges();
+                                selection.addRange(range);
+                                document.execCommand('copy');
+                            } finally {
+                                document.body.removeChild(img);
+                            }
+                        }
                     }
                     flashMessage('Content copied to clipboard successfully', 'success');
                 } catch (error) {
                     console.error('Error copying to clipboard:', error);
-                    flashMessage('Failed to copy to clipboard. Please try selecting and copying manually.', 'error');
+                    // Create a more helpful error message
+                    const message = 'Failed to copy to clipboard. ' + 
+                        (currentServerContent.type === 'image' ? 
+                        'Your browser might not support copying images.' : 
+                        'Please try using Ctrl+C or Command+C.');
+                    flashMessage(message, 'error');
                 }
             });
         }
