@@ -182,7 +182,7 @@ def upload_clipboard():
             # Use fixed filename for text content
             filename = "clipboard_text.txt"
             filepath = os.path.join(app.config['CLIPBOARD_FOLDER'], filename)
-            with open(filepath, 'w', encoding='utf-8') as f:
+            with open(filepath, 'w', encoding='utf-8', newline='') as f:
                 f.write(data)
             flash(f'Clipboard text saved successfully', 'success')
             logging.info(f"Updated clipboard text file at: {filepath}")

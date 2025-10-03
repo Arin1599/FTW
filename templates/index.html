@@ -32,7 +32,7 @@
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <img src="{{ qr_data_uri }}" alt="Scan to open LocalShare" class="qr-image"/>
+            <img src="{{ qr_data_uri }}" alt="Scan to open LocalShare" class="qr-image" />
             <div class="qr-url">
                 <code id="server-url">{{ request.host_url.rstrip('/') }}/</code>
             </div>
@@ -389,7 +389,8 @@
             // If user types directly, treat it as text input
             // unless an image was just pasted.
             if (clipboardTypeInput.value !== 'image') {
-                const textContent = pasteArea.innerText.trim();
+                // Use textContent instead of innerText to avoid extra line breaks
+                const textContent = pasteArea.textContent.trim();
                 if (textContent) {
                     clipboardDataInput.value = textContent;
                     clipboardTypeInput.value = 'text';
@@ -531,7 +532,7 @@
                             pre.textContent = data.data;
                             pre.className = 'whitespace-pre-wrap text-left w-full max-h-[150px] overflow-y-auto text-sm text-gray-700 bg-white p-2 rounded-md';
                             serverClipboardArea.appendChild(pre);
-                            
+
                             // Show copy button, hide download button
                             copyServerClipboardBtn.disabled = false;
                             if (downloadServerClipboardBtn) {
@@ -544,7 +545,7 @@
                             img.alt = "Server clipboard image";
                             img.className = 'max-w-full max-h-[150px] object-contain mx-auto';
                             serverClipboardArea.appendChild(img);
-                            
+
                             // Show both copy and download buttons for images
                             copyServerClipboardBtn.disabled = false;
                             if (downloadServerClipboardBtn) {
@@ -672,7 +673,7 @@
                                 tempDiv.style.position = 'fixed';
                                 tempDiv.style.left = '-9999px';
                                 tempDiv.style.top = '-9999px';
-                                
+
                                 // Clone the image and add to temp div
                                 const imgClone = imgElement.cloneNode(true);
                                 tempDiv.appendChild(imgClone);
