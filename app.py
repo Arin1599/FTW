@@ -8,6 +8,14 @@ from werkzeug.utils import secure_filename  # Add this import
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, flash, jsonify
 import logging
 from PIL import ImageGrab  # For clipboard image support
+from PIL import Image, ImageTk
+import threading
+try:
+    import tkinter as tk
+except Exception:
+    tk = None
+import qrcode
+import qrcode.image.svg
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'uploads' # Folder to save uploaded files
@@ -77,8 +85,38 @@ def index():
         flash(f"An error occurred listing files: {e}", "error")
         logging.error(f"Error listing files in {data_path}: {e}")
 
-    # Pass the DATA_FOLDER path to the template for display purposes
-    return render_template('index.html', files=files_in_data, data_folder_name=app.config['DATA_FOLDER'])
+    # Generate a QR code pointing to the server's advertised URL so users can scan to open the frontend
+    try:
+        host_ip = get_ip_address()
+        port = 5000
+        advertised_url = f'http://{host_ip}:{port}/'
+        qr_data_uri = generate_qr_data_uri(advertised_url)
+    except Exception as e:
+        logging.error(f"Failed to generate QR code: {e}")
+        qr_data_uri = None
+
+    # Pass the DATA_FOLDER path and qr image data to the template for display purposes
+    return render_template('index.html', files=files_in_data, data_folder_name=app.config['DATA_FOLDER'], qr_data_uri=qr_data_uri)
+
+
+def generate_qr_data_uri(data, box_size=8, border=4):
+    """Generate a PNG QR code and return a data URI (base64) suitable for embedding in an <img> tag.
+
+    Keeps dependencies minimal by using Pillow (already a requirement) via qrcode.
+    """
+    try:
+        qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=box_size, border=border)
+        qr.add_data(data)
+        qr.make(fit=True)
+
+        img = qr.make_image(fill_color="black", back_color="white")
+        buffered = io.BytesIO()
+        img.save(buffered, format="PNG")
+        img_bytes = buffered.getvalue()
+        data_b64 = base64.b64encode(img_bytes).decode('ascii')
+        return f'data:image/png;base64,{data_b64}'
+    except Exception:
+        raise
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -288,9 +326,75 @@ if __name__ == '__main__':
     print("*" * 60)
 
     # Run the app making it accessible on the network '0.0.0.0'
-    # Use debug=False for a more stable environment, debug=True for development
-    # Consider using a production-ready WSGI server like Waitress or Gunicorn for better performance/stability
-    # Example using waitress:
-    # from waitress import serve
-    # serve(app, host='0.0.0.0', port=port)
-    app.run(host='0.0.0.0', port=port, debug=True) # Changed debug to False for default
+    # We'll start Flask in a background thread and show a small desktop QR popup using tkinter
+    server_url = f'http://{host_ip}:{port}/'
+
+    def run_server():
+        # Disable the reloader to avoid double-starting
+        try:
+            app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
+        except Exception as e:
+            logging.critical(f"Flask server failed: {e}")
+
+    server_thread = threading.Thread(target=run_server, daemon=False)
+    server_thread.start()
+
+    # Try to show a small Tkinter window with the QR code so the user can scan immediately
+    if tk is not None:
+        try:
+            # Create QR PIL image
+            qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=6, border=2)
+            qr.add_data(server_url)
+            qr.make(fit=True)
+            qr_img = qr.make_image(fill_color='black', back_color='white')
+
+            # Convert to ImageTk
+            root = tk.Tk()
+            root.title('LocalShare - Scan to Open')
+            # Keep window on top
+            try:
+                root.attributes('-topmost', True)
+            except Exception:
+                pass
+
+            # Resize window to fit QR and some text
+            img_w, img_h = qr_img.size
+            max_size = 360
+            scale = min(1.0, max_size / max(img_w, img_h))
+            if scale != 1.0:
+                new_size = (int(img_w * scale), int(img_h * scale))
+                qr_img = qr_img.resize(new_size, Image.NEAREST)
+
+            photo = ImageTk.PhotoImage(qr_img)
+
+            # Image label
+            img_label = tk.Label(root, image=photo)
+            img_label.pack(padx=10, pady=(10, 0))
+
+            # URL label with monospace font
+            url_label = tk.Label(root, text=server_url, fg='#111', font=('Consolas', 10))
+            url_label.pack(padx=10, pady=(6, 6))
+
+            # Close button
+            def close_and_continue():
+                root.destroy()
+
+            btn = tk.Button(root, text='Close', command=close_and_continue)
+            btn.pack(pady=(0, 10))
+
+            # Auto-close after 30 seconds
+            root.after(30000, lambda: (root.winfo_exists() and root.destroy()))
+
+            # Start the Tk mainloop (this will block here until the window is closed)
+            root.mainloop()
+        except Exception as e:
+            logging.error(f"Failed to show desktop QR popup: {e}")
+    else:
+        logging.info('Tkinter not available; skipping desktop QR popup.')
+
+    print('\nServer is running. Press CTRL+C to stop.')
+    try:
+        # Wait for server thread to finish (blocks until server exits)
+        server_thread.join()
+    except KeyboardInterrupt:
+        print('\nKeyboard interrupt received, exiting.')

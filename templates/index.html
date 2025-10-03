@@ -19,6 +19,22 @@
 
     <div id="flash-messages" class="mb-4"></div>
 
+    <!-- QR Code Panel -->
+    <div class="qr-panel text-center mb-4">
+        {% if qr_data_uri %}
+        <div class="qr-card">
+            <h3 class="text-lg font-semibold">Scan to open LocalShare</h3>
+            <img src="{{ qr_data_uri }}" alt="Scan to open LocalShare" class="mx-auto my-2" style="width:200px;height:200px;"/>
+            <div class="mt-2">
+                <code id="server-url" class="bg-gray-100 px-2 py-1 rounded text-sm break-words">{{ request.host_url.rstrip('/') }}/</code>
+            </div>
+            <div class="mt-2">
+                <button id="copy-url-btn" class="btn btn-secondary">Copy URL</button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
     <div class="main-container">
         <!-- Upload Files Card -->
         <div class="feature-card">
@@ -598,6 +614,33 @@
                     button.parentElement.style.display = 'none';
                 });
             });
+            // Copy server URL button
+            const copyUrlBtn = document.getElementById('copy-url-btn');
+            const serverUrlEl = document.getElementById('server-url');
+            if (copyUrlBtn && serverUrlEl) {
+                copyUrlBtn.addEventListener('click', async () => {
+                    const urlText = serverUrlEl.textContent.trim();
+                    try {
+                        await navigator.clipboard.writeText(urlText);
+                        flashMessage('Server URL copied to clipboard', 'success');
+                    } catch (err) {
+                        // Fallback copy
+                        const textarea = document.createElement('textarea');
+                        textarea.value = urlText;
+                        textarea.style.position = 'fixed';
+                        textarea.style.opacity = '0';
+                        document.body.appendChild(textarea);
+                        textarea.select();
+                        try {
+                            document.execCommand('copy');
+                            flashMessage('Server URL copied to clipboard', 'success');
+                        } catch (e) {
+                            flashMessage('Failed to copy URL. Please copy manually.', 'error');
+                        }
+                        document.body.removeChild(textarea);
+                    }
+                });
+            }
         });
 
     </script>
