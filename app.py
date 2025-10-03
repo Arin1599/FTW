@@ -336,65 +336,79 @@ if __name__ == '__main__':
         except Exception as e:
             logging.critical(f"Flask server failed: {e}")
 
-    server_thread = threading.Thread(target=run_server, daemon=False)
+    server_thread = threading.Thread(target=run_server, daemon=True)
     server_thread.start()
 
     # Try to show a small Tkinter window with the QR code so the user can scan immediately
-    if tk is not None:
-        try:
-            # Create QR PIL image
-            qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=6, border=2)
-            qr.add_data(server_url)
-            qr.make(fit=True)
-            qr_img = qr.make_image(fill_color='black', back_color='white')
-
-            # Convert to ImageTk
-            root = tk.Tk()
-            root.title('LocalShare - Scan to Open')
-            # Keep window on top
+    # This runs in a separate thread so closing it won't stop the server
+    def show_qr_window():
+        if tk is not None:
             try:
-                root.attributes('-topmost', True)
-            except Exception:
-                pass
+                # Create QR PIL image
+                qr = qrcode.QRCode(error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=6, border=2)
+                qr.add_data(server_url)
+                qr.make(fit=True)
+                qr_img = qr.make_image(fill_color='black', back_color='white')
 
-            # Resize window to fit QR and some text
-            img_w, img_h = qr_img.size
-            max_size = 360
-            scale = min(1.0, max_size / max(img_w, img_h))
-            if scale != 1.0:
-                new_size = (int(img_w * scale), int(img_h * scale))
-                qr_img = qr_img.resize(new_size, Image.NEAREST)
+                # Convert to ImageTk
+                root = tk.Tk()
+                root.title('LocalShare - Scan to Open')
+                # Keep window on top
+                try:
+                    root.attributes('-topmost', True)
+                except Exception:
+                    pass
 
-            photo = ImageTk.PhotoImage(qr_img)
+                # Resize window to fit QR and some text
+                img_w, img_h = qr_img.size
+                max_size = 360
+                scale = min(1.0, max_size / max(img_w, img_h))
+                if scale != 1.0:
+                    new_size = (int(img_w * scale), int(img_h * scale))
+                    qr_img = qr_img.resize(new_size, Image.NEAREST)
 
-            # Image label
-            img_label = tk.Label(root, image=photo)
-            img_label.pack(padx=10, pady=(10, 0))
+                photo = ImageTk.PhotoImage(qr_img)
 
-            # URL label with monospace font
-            url_label = tk.Label(root, text=server_url, fg='#111', font=('Consolas', 10))
-            url_label.pack(padx=10, pady=(6, 6))
+                # Image label
+                img_label = tk.Label(root, image=photo)
+                img_label.pack(padx=10, pady=(10, 0))
 
-            # Close button
-            def close_and_continue():
-                root.destroy()
+                # URL label with monospace font
+                url_label = tk.Label(root, text=server_url, fg='#111', font=('Consolas', 10))
+                url_label.pack(padx=10, pady=(6, 6))
 
-            btn = tk.Button(root, text='Close', command=close_and_continue)
-            btn.pack(pady=(0, 10))
+                # Info label
+                info_label = tk.Label(root, text='Closing this window will NOT stop the server', 
+                                     fg='#666', font=('Arial', 8))
+                info_label.pack(padx=10, pady=(0, 6))
 
-            # Auto-close after 30 seconds
-            root.after(30000, lambda: (root.winfo_exists() and root.destroy()))
+                # Close button
+                def close_window():
+                    root.destroy()
 
-            # Start the Tk mainloop (this will block here until the window is closed)
-            root.mainloop()
-        except Exception as e:
-            logging.error(f"Failed to show desktop QR popup: {e}")
-    else:
-        logging.info('Tkinter not available; skipping desktop QR popup.')
+                btn = tk.Button(root, text='Close', command=close_window)
+                btn.pack(pady=(0, 10))
+
+                # Auto-close after 30 seconds
+                root.after(30000, lambda: (root.winfo_exists() and root.destroy()))
+
+                # Start the Tk mainloop (this will block only this thread)
+                root.mainloop()
+            except Exception as e:
+                logging.error(f"Failed to show desktop QR popup: {e}")
+        else:
+            logging.info('Tkinter not available; skipping desktop QR popup.')
+
+    # Run QR window in a separate daemon thread
+    qr_thread = threading.Thread(target=show_qr_window, daemon=True)
+    qr_thread.start()
 
     print('\nServer is running. Press CTRL+C to stop.')
     try:
-        # Wait for server thread to finish (blocks until server exits)
-        server_thread.join()
+        # Keep the main thread alive
+        while True:
+            server_thread.join(timeout=1.0)
+            if not server_thread.is_alive():
+                break
     except KeyboardInterrupt:
         print('\nKeyboard interrupt received, exiting.')

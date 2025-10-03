@@ -19,21 +19,29 @@
 
     <div id="flash-messages" class="mb-4"></div>
 
-    <!-- QR Code Panel -->
-    <div class="qr-panel text-center mb-4">
-        {% if qr_data_uri %}
-        <div class="qr-card">
-            <h3 class="text-lg font-semibold">Scan to open LocalShare</h3>
-            <img src="{{ qr_data_uri }}" alt="Scan to open LocalShare" class="mx-auto my-2" style="width:200px;height:200px;"/>
-            <div class="mt-2">
-                <code id="server-url" class="bg-gray-100 px-2 py-1 rounded text-sm break-words">{{ request.host_url.rstrip('/') }}/</code>
+    <!-- QR Code Corner Widget -->
+    {% if qr_data_uri %}
+    <div id="qr-widget" class="qr-widget">
+        <button id="qr-toggle" class="qr-toggle-btn" title="Show/Hide QR Code">
+            <i class="fas fa-qrcode"></i>
+        </button>
+        <div id="qr-content" class="qr-content">
+            <div class="qr-header">
+                <span>Scan to Connect</span>
+                <button id="qr-close" class="qr-close-btn" title="Close">
+                    <i class="fas fa-times"></i>
+                </button>
             </div>
-            <div class="mt-2">
-                <button id="copy-url-btn" class="btn btn-secondary">Copy URL</button>
+            <img src="{{ qr_data_uri }}" alt="Scan to open LocalShare" class="qr-image"/>
+            <div class="qr-url">
+                <code id="server-url">{{ request.host_url.rstrip('/') }}/</code>
             </div>
+            <button id="copy-url-btn" class="qr-copy-btn">
+                <i class="fas fa-copy"></i> Copy URL
+            </button>
         </div>
-        {% endif %}
     </div>
+    {% endif %}
 
     <div class="main-container">
         <!-- Upload Files Card -->
@@ -113,10 +121,13 @@
                 </div>
                 <div class="feature-card-footer">
                     <button type="button" id="fetch-server-clipboard" class="btn btn-primary flex-grow">
-                        <i class="fas fa-sync"></i>Fetch Server Clipboard
+                        <i class="fas fa-sync"></i>Fetch
                     </button>
                     <button type="button" id="copy-server-clipboard" class="btn btn-secondary" disabled>
                         <i class="fas fa-copy"></i>Copy
+                    </button>
+                    <button type="button" id="download-server-clipboard" class="btn btn-neutral hidden" disabled>
+                        <i class="fas fa-download"></i>
                     </button>
                 </div>
             </div>
@@ -497,6 +508,7 @@
         function setupServerClipboard() {
             const fetchServerClipboardBtn = document.getElementById('fetch-server-clipboard');
             const copyServerClipboardBtn = document.getElementById('copy-server-clipboard');
+            const downloadServerClipboardBtn = document.getElementById('download-server-clipboard');
             const serverClipboardArea = document.getElementById('server-clipboard-area');
 
             if (!fetchServerClipboardBtn || !copyServerClipboardBtn || !serverClipboardArea) return;
@@ -519,15 +531,28 @@
                             pre.textContent = data.data;
                             pre.className = 'whitespace-pre-wrap text-left w-full max-h-[150px] overflow-y-auto text-sm text-gray-700 bg-white p-2 rounded-md';
                             serverClipboardArea.appendChild(pre);
+                            
+                            // Show copy button, hide download button
+                            copyServerClipboardBtn.disabled = false;
+                            if (downloadServerClipboardBtn) {
+                                downloadServerClipboardBtn.classList.add('hidden');
+                                downloadServerClipboardBtn.disabled = true;
+                            }
                         } else if (data.type === 'image') {
                             const img = document.createElement('img');
                             img.src = data.data;
                             img.alt = "Server clipboard image";
                             img.className = 'max-w-full max-h-[150px] object-contain mx-auto';
                             serverClipboardArea.appendChild(img);
+                            
+                            // Show both copy and download buttons for images
+                            copyServerClipboardBtn.disabled = false;
+                            if (downloadServerClipboardBtn) {
+                                downloadServerClipboardBtn.classList.remove('hidden');
+                                downloadServerClipboardBtn.disabled = false;
+                            }
                         }
 
-                        copyServerClipboardBtn.disabled = false;
                         flashMessage('Server clipboard content fetched successfully', 'success');
                     } else {
                         throw new Error(data.error || 'No content in server clipboard');
@@ -541,6 +566,10 @@
                             <span>Failed to fetch server clipboard</span>
                         </div>`;
                     copyServerClipboardBtn.disabled = true;
+                    if (downloadServerClipboardBtn) {
+                        downloadServerClipboardBtn.classList.add('hidden');
+                        downloadServerClipboardBtn.disabled = true;
+                    }
                     currentServerContent = null;
                 } finally {
                     fetchServerClipboardBtn.disabled = false;
@@ -568,55 +597,171 @@
                         }
                         flashMessage('Text copied to clipboard successfully', 'success');
                     } else if (currentServerContent.type === 'image') {
-                        // For images, convert base64 to blob
-                        const base64Data = currentServerContent.data.split(',')[1];
-                        const byteCharacters = atob(base64Data);
-                        const byteNumbers = new Array(byteCharacters.length);
-                        for (let i = 0; i < byteCharacters.length; i++) {
-                            byteNumbers[i] = byteCharacters.charCodeAt(i);
-                        }
-                        const byteArray = new Uint8Array(byteNumbers);
-                        const blob = new Blob([byteArray], { type: 'image/png' });
+                        // Enhanced image copy with multiple fallback methods
+                        let copySuccess = false;
 
+                        // Method 1: Try modern Clipboard API with blob
                         try {
+                            const base64Data = currentServerContent.data.split(',')[1];
+                            const byteCharacters = atob(base64Data);
+                            const byteNumbers = new Array(byteCharacters.length);
+                            for (let i = 0; i < byteCharacters.length; i++) {
+                                byteNumbers[i] = byteCharacters.charCodeAt(i);
+                            }
+                            const byteArray = new Uint8Array(byteNumbers);
+                            const blob = new Blob([byteArray], { type: 'image/png' });
+
                             await navigator.clipboard.write([
                                 new ClipboardItem({
                                     'image/png': blob
                                 })
                             ]);
+                            copySuccess = true;
                             flashMessage('Image copied to clipboard successfully', 'success');
-                        } catch (err) {
-                            console.error('Clipboard API failed:', err);
-                            // Show a helpful message for manual copy
-                            flashMessage('Right-click the image and select "Copy Image" to copy it', 'warning');
+                        } catch (clipboardErr) {
+                            console.log('Clipboard API method failed, trying canvas method...', clipboardErr);
+
+                            // Method 2: Try canvas-based copy (works in more browsers)
+                            try {
+                                const img = serverClipboardArea.querySelector('img');
+                                if (img && img.complete) {
+                                    // Create a canvas and draw the image
+                                    const canvas = document.createElement('canvas');
+                                    canvas.width = img.naturalWidth;
+                                    canvas.height = img.naturalHeight;
+                                    const ctx = canvas.getContext('2d');
+                                    ctx.drawImage(img, 0, 0);
+
+                                    // Convert canvas to blob
+                                    canvas.toBlob(async (blob) => {
+                                        try {
+                                            await navigator.clipboard.write([
+                                                new ClipboardItem({
+                                                    'image/png': blob
+                                                })
+                                            ]);
+                                            copySuccess = true;
+                                            flashMessage('Image copied to clipboard successfully', 'success');
+                                        } catch (err2) {
+                                            console.log('Canvas clipboard method also failed', err2);
+                                            // Method 3: Create a contenteditable div with the image
+                                            copyImageFallback(img);
+                                        }
+                                    }, 'image/png');
+                                } else {
+                                    throw new Error('Image not loaded');
+                                }
+                            } catch (canvasErr) {
+                                console.log('Canvas method failed, using fallback...', canvasErr);
+                                // Method 3: Fallback - select and copy the image element
+                                const img = serverClipboardArea.querySelector('img');
+                                if (img) {
+                                    copyImageFallback(img);
+                                } else {
+                                    throw new Error('No image element found');
+                                }
+                            }
+                        }
+
+                        // Helper function for fallback image copy
+                        function copyImageFallback(imgElement) {
+                            try {
+                                // Create a temporary contenteditable div
+                                const tempDiv = document.createElement('div');
+                                tempDiv.contentEditable = true;
+                                tempDiv.style.position = 'fixed';
+                                tempDiv.style.left = '-9999px';
+                                tempDiv.style.top = '-9999px';
+                                
+                                // Clone the image and add to temp div
+                                const imgClone = imgElement.cloneNode(true);
+                                tempDiv.appendChild(imgClone);
+                                document.body.appendChild(tempDiv);
+
+                                // Select the content
+                                const range = document.createRange();
+                                range.selectNodeContents(tempDiv);
+                                const selection = window.getSelection();
+                                selection.removeAllRanges();
+                                selection.addRange(range);
+
+                                // Try to copy
+                                const successful = document.execCommand('copy');
+                                document.body.removeChild(tempDiv);
+
+                                if (successful) {
+                                    flashMessage('Image copied to clipboard successfully', 'success');
+                                } else {
+                                    flashMessage('Please right-click the image and select "Copy Image"', 'warning');
+                                }
+                            } catch (err) {
+                                console.error('Fallback copy failed:', err);
+                                flashMessage('Please right-click the image and select "Copy Image"', 'warning');
+                            }
                         }
                     }
                 } catch (error) {
                     console.error('Error copying to clipboard:', error);
-                    // Create a more helpful error message
-                    const message = 'Failed to copy to clipboard. ' +
-                        (currentServerContent.type === 'image' ?
-                            'Right-click the image and select "Copy Image"' :
-                            'Please try using Ctrl+C or Command+C.');
+                    const message = currentServerContent.type === 'image' ?
+                        'Unable to copy automatically. Please right-click the image and select "Copy Image"' :
+                        'Failed to copy to clipboard. Please try using Ctrl+C or Command+C.';
                     flashMessage(message, 'error');
                 }
             });
+
+            // Download button for images
+            if (downloadServerClipboardBtn) {
+                downloadServerClipboardBtn.addEventListener('click', () => {
+                    if (!currentServerContent || currentServerContent.type !== 'image') return;
+
+                    try {
+                        // Create a download link
+                        const link = document.createElement('a');
+                        link.href = currentServerContent.data;
+                        link.download = `clipboard_image_${new Date().getTime()}.png`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        flashMessage('Image downloaded successfully', 'success');
+                    } catch (error) {
+                        console.error('Error downloading image:', error);
+                        flashMessage('Failed to download image', 'error');
+                    }
+                });
+            }
         }
 
-        // --- Initialization ---
-        document.addEventListener('DOMContentLoaded', () => {
-            setupFileUpload();
-            setupClipboard();
-            setupServerClipboard();
-            // Add listeners to existing flash message close buttons
-            document.querySelectorAll('#flash-messages button').forEach(button => {
-                button.addEventListener('click', () => {
-                    button.parentElement.style.display = 'none';
-                });
-            });
-            // Copy server URL button
+        // --- QR Widget Logic ---
+        function setupQRWidget() {
+            const qrToggle = document.getElementById('qr-toggle');
+            const qrContent = document.getElementById('qr-content');
+            const qrClose = document.getElementById('qr-close');
             const copyUrlBtn = document.getElementById('copy-url-btn');
             const serverUrlEl = document.getElementById('server-url');
+
+            if (!qrToggle || !qrContent) return;
+
+            // Toggle QR content
+            qrToggle.addEventListener('click', () => {
+                qrContent.classList.toggle('show');
+            });
+
+            // Close QR content
+            if (qrClose) {
+                qrClose.addEventListener('click', () => {
+                    qrContent.classList.remove('show');
+                });
+            }
+
+            // Close when clicking outside
+            document.addEventListener('click', (e) => {
+                const qrWidget = document.getElementById('qr-widget');
+                if (qrWidget && !qrWidget.contains(e.target)) {
+                    qrContent.classList.remove('show');
+                }
+            });
+
+            // Copy URL functionality
             if (copyUrlBtn && serverUrlEl) {
                 copyUrlBtn.addEventListener('click', async () => {
                     const urlText = serverUrlEl.textContent.trim();
@@ -641,6 +786,20 @@
                     }
                 });
             }
+        }
+
+        // --- Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            setupFileUpload();
+            setupClipboard();
+            setupServerClipboard();
+            setupQRWidget();
+            // Add listeners to existing flash message close buttons
+            document.querySelectorAll('#flash-messages button').forEach(button => {
+                button.addEventListener('click', () => {
+                    button.parentElement.style.display = 'none';
+                });
+            });
         });
 
     </script>
