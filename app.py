@@ -1,11 +1,13 @@
 import os
 import socket
 import base64
+import io
 from datetime import datetime
 import pyperclip  # Add this import
 from werkzeug.utils import secure_filename  # Add this import
 from flask import Flask, request, render_template, send_from_directory, redirect, url_for, flash, jsonify
 import logging
+from PIL import ImageGrab  # For clipboard image support
 
 # --- Configuration ---
 UPLOAD_FOLDER = 'uploads' # Folder to save uploaded files
@@ -222,14 +224,33 @@ def download_file(filename):
 
 @app.route('/get_server_clipboard')
 def get_server_clipboard():
-    """Returns the current clipboard content from the server"""
+    """Returns the current clipboard content from the server (text or image)"""
     try:
-        clipboard_text = pyperclip.paste()
-        return jsonify({
-            'success': True,
-            'data': clipboard_text,
-            'type': 'text'  # Currently only supporting text, could be extended for images
-        })
+        # Try to get image from clipboard first
+        image = ImageGrab.grabclipboard()
+        
+        if image is not None:
+            # Image found in clipboard
+            buffer = io.BytesIO()
+            image.save(buffer, format='PNG')
+            img_str = base64.b64encode(buffer.getvalue()).decode()
+            
+            logging.info("Retrieved image from server clipboard")
+            return jsonify({
+                'success': True,
+                'data': f'data:image/png;base64,{img_str}',
+                'type': 'image'
+            })
+        else:
+            # No image, try text
+            clipboard_text = pyperclip.paste()
+            logging.info("Retrieved text from server clipboard")
+            return jsonify({
+                'success': True,
+                'data': clipboard_text,
+                'type': 'text'
+            })
+            
     except Exception as e:
         logging.error(f"Error reading server clipboard: {e}")
         return jsonify({
