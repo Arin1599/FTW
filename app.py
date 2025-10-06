@@ -32,7 +32,7 @@ app.config['DATA_FOLDER'] = DATA_FOLDER
 app.config['CLIPBOARD_FOLDER'] = CLIPBOARD_FOLDER
 # Set a maximum upload size (e.g., 1GB). Adjust as needed.
 # Be aware that the development server might struggle with very large files.
-app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024 * 1024 # 1 GB
+app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024 * 1024 # 1 GB
 app.secret_key = os.urandom(24) # Generate a random secret key for session security (flash messages)
 
 # --- Helper Functions ---
