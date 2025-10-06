@@ -265,29 +265,60 @@ def get_server_clipboard():
     """Returns the current clipboard content from the server (text or image)"""
     try:
         # Try to get image from clipboard first
-        image = ImageGrab.grabclipboard()
+        clipboard_content = ImageGrab.grabclipboard()
         
-        if image is not None:
-            # Image found in clipboard
-            buffer = io.BytesIO()
-            image.save(buffer, format='PNG')
-            img_str = base64.b64encode(buffer.getvalue()).decode()
-            
-            logging.info("Retrieved image from server clipboard")
-            return jsonify({
-                'success': True,
-                'data': f'data:image/png;base64,{img_str}',
-                'type': 'image'
-            })
-        else:
-            # No image, try text
-            clipboard_text = pyperclip.paste()
-            logging.info("Retrieved text from server clipboard")
-            return jsonify({
-                'success': True,
-                'data': clipboard_text,
-                'type': 'text'
-            })
+        if clipboard_content is not None:
+            # Check if it's a PIL Image object
+            if isinstance(clipboard_content, Image.Image):
+                # Image found in clipboard
+                buffer = io.BytesIO()
+                clipboard_content.save(buffer, format='PNG')
+                img_str = base64.b64encode(buffer.getvalue()).decode()
+                
+                logging.info("Retrieved image from server clipboard")
+                return jsonify({
+                    'success': True,
+                    'data': f'data:image/png;base64,{img_str}',
+                    'type': 'image'
+                })
+            elif isinstance(clipboard_content, list):
+                # Clipboard contains file paths (common for copied files/images)
+                # Try to open the first file if it's an image
+                if len(clipboard_content) > 0:
+                    file_path = clipboard_content[0]
+                    try:
+                        # Verify the file exists and is accessible
+                        if not os.path.isfile(file_path):
+                            logging.warning(f"Clipboard file path does not exist: {file_path}")
+                        else:
+                            # Try to open as image
+                            with Image.open(file_path) as img:
+                                # Convert to RGB if necessary (handles CMYK JPEGs, etc.)
+                                if img.mode not in ('RGB', 'RGBA'):
+                                    img = img.convert('RGB')
+                                
+                                buffer = io.BytesIO()
+                                img.save(buffer, format='PNG')
+                                img_str = base64.b64encode(buffer.getvalue()).decode()
+                                
+                                logging.info(f"Retrieved image file from server clipboard: {file_path}")
+                                return jsonify({
+                                    'success': True,
+                                    'data': f'data:image/png;base64,{img_str}',
+                                    'type': 'image'
+                                })
+                    except Exception as e:
+                        logging.warning(f"Could not open clipboard file as image: {e}")
+                        # Fall through to text handling
+        
+        # No image, try text
+        clipboard_text = pyperclip.paste()
+        logging.info("Retrieved text from server clipboard")
+        return jsonify({
+            'success': True,
+            'data': clipboard_text,
+            'type': 'text'
+        })
             
     except Exception as e:
         logging.error(f"Error reading server clipboard: {e}")
